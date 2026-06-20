@@ -1,8 +1,8 @@
 {
   "mcpServers": {
     "zotero": {
-      "command": "zotero-mcp",
-      "args": ["serve"],
+      "command": "bash",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/start-zotero-mcp.sh"],
       "env": {
         "ZOTERO_LOCAL": "true"
       }

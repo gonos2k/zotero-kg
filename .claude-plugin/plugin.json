@@ -10,5 +10,6 @@
   "repository": "https://github.com/gonos2k/zotero-kg",
   "license": "MIT",
   "keywords": ["zotero", "claude-code", "knowledge-graph", "arxiv", "reference-manager", "research"],
-  "skills": ["./skills/zotero-kg"]
+  "skills": ["./skills/zotero-kg"],
+  "mcpServers": "./.mcp.json"
 }

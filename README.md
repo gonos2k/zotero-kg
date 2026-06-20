@@ -39,7 +39,13 @@ This is a Claude Code **plugin**. Add the marketplace and install:
 ```
 
 The plugin bundles the skill **and** auto-registers the `zotero` MCP server (local mode). You still need the
-`zotero-mcp` binary on PATH (see Prerequisites) and Zotero running with the local API enabled.
+`zotero-mcp` binary installed (see Prerequisites) and Zotero running with the local API enabled.
+
+> The bundled MCP server is started via `scripts/start-zotero-mcp.sh`, which resolves `zotero-mcp` from your
+> PATH or the common install dirs (`~/.local/bin`, uv/pipx venvs, Homebrew) — this is deliberate, because
+> Claude Code may spawn MCP servers with a minimal PATH that omits `~/.local/bin`. If it still can't find the
+> binary, the `zotero` server just won't appear in `/mcp` (the bundled CLI scripts work regardless). On
+> Windows, ensure `zotero-mcp` is on PATH or run under WSL.
 
 The bundled scripts can also be run directly from the installed plugin, e.g.:
 
