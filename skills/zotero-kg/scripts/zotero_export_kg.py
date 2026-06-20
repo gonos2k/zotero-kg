@@ -14,7 +14,7 @@ Usage:
 Then:
   /kg-ingest /tmp/zotero-kg-staging
 """
-import argparse, json, os, re, urllib.request, urllib.parse
+import argparse, glob, json, os, re, urllib.request, urllib.parse
 
 BASE = "http://localhost:23119/api/users/0"
 
@@ -61,6 +61,11 @@ def main():
         print(f"WARNING: hit --limit {a.limit}; more items may exist — raise --limit to export all.")
 
     os.makedirs(a.out, exist_ok=True)
+    stale = glob.glob(os.path.join(a.out, "*.md"))   # clear prior exports so /kg-ingest only sees THIS run
+    for s in stale:
+        os.remove(s)
+    if stale:
+        print(f"(cleared {len(stale)} stale .md file(s) from {a.out})")
     written, used = [], set()
     for it in data:
         d = it["data"]

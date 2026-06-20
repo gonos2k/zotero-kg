@@ -7,12 +7,16 @@ The connector endpoint that the browser "Save to Zotero" button uses IS read-wri
 the running Zotero. Caveat: it can only ADD items, never edit/delete existing ones.
 
 arXiv metadata comes from export.arxiv.org over HTTPS via curl (slow, ~12s/call, and it rate-limits
-on rapid repeats — urllib's http->https redirect also tends to time out). Results are cached to
-/tmp/zotero_add_cache.json so reruns and dry-runs don't refetch.
+on rapid repeats). Results are cached to /tmp/zotero_add_cache.json with a short TTL so a dry-run and
+the real run in the same sitting don't refetch — but a stale cache never silently defeats the
+"latest version" guarantee: entries older than CACHE_TTL are re-fetched, and `--refresh` forces it.
+Tags are NOT cached; the current --tag is applied fresh on every return.
 
 Usage:
   python zotero_add.py --arxiv 2505.22954 2509.19349 [--doi 10.1038/...] [--tag code-evolution] [--dry-run]
-  python zotero_add.py --input papers.json        # [{"arxiv":"..."}|{"doi":"..."}]
+  python zotero_add.py --input papers.json            # [{"arxiv":"..."}|{"doi":"..."}]
+  python zotero_add.py --arxiv 2505.22954 --tag t --refresh             # ignore cache, re-fetch latest
+  python zotero_add.py --arxiv 2505.22954 --tag t --force-without-dedup # add even if dedup read fails
 """
 import argparse, json, os, re, html, subprocess, time
 import urllib.request, urllib.error, urllib.parse
@@ -21,6 +25,7 @@ import xml.etree.ElementTree as ET  # input is the trusted arXiv/CrossRef API; s
 BASE = "http://localhost:23119"
 NS = {"a": "http://www.w3.org/2005/Atom"}
 CACHE = "/tmp/zotero_add_cache.json"
+CACHE_TTL = 6 * 3600  # seconds; beyond this we re-fetch so "latest arXiv version" stays accurate
 
 
 def curl(url):
@@ -45,19 +50,49 @@ def creators(names):
 
 
 def load_cache():
-    return json.load(open(CACHE)) if os.path.exists(CACHE) else {}
+    try:
+        return json.load(open(CACHE)) if os.path.exists(CACHE) else {}
+    except Exception:
+        return {}
 
 
 def save_cache(c):
     json.dump(c, open(CACHE, "w"))
 
 
-def fetch_arxiv(aid, cache, tag):
+def cache_get(cache, key, refresh):
+    """Return cached metadata (WITHOUT tags) if present and within TTL, else None."""
+    if refresh:
+        return None
+    e = cache.get(key)
+    if not isinstance(e, dict) or "item" not in e or "ts" not in e:
+        return None  # absent, or legacy flat format → treat as a miss
+    if time.time() - e["ts"] > CACHE_TTL:
+        return None
+    return e["item"]
+
+
+def cache_put(cache, key, item):
+    # store metadata only; tags are run-specific and applied per-call by apply_tag()
+    cache[key] = {"ts": time.time(), "item": {k: v for k, v in item.items() if k != "tags"}}
+    save_cache(cache)
+
+
+def apply_tag(item, tag):
+    """Return a copy of item carrying ONLY the current --tag (strips any stale cached tag)."""
+    it = {k: v for k, v in item.items() if k != "tags"}
+    if tag:
+        it["tags"] = [{"tag": tag}]
+    return it
+
+
+def fetch_arxiv(aid, cache, tag, refresh=False):
     aid = re.sub(r"^arxiv:", "", aid.strip(), flags=re.I)
     aid = re.sub(r"v[0-9]+$", "", aid)            # normalize: drop any version the user pasted (e.g. 2505.22954v1)
     key = f"arxiv:{aid}"
-    if key in cache:
-        return cache[key]
+    cached = cache_get(cache, key, refresh)
+    if cached is not None:
+        return apply_tag(cached, tag)
     e = ET.fromstring(curl(f"https://export.arxiv.org/api/query?id_list={aid}&max_results=1")).find("a:entry", NS)
     if e is None:
         raise RuntimeError(f"no entry for {aid} (invalid ID, or arXiv timeout/rate-limit)")
@@ -75,17 +110,15 @@ def fetch_arxiv(aid, cache, tag):
             "archiveID": f"arXiv:{aid}", "date": (e.find("a:updated", NS).text or "")[:10],
             "url": f"https://arxiv.org/abs/{aid}{ver}", "DOI": f"10.48550/arXiv.{aid}",
             "libraryCatalog": "arXiv.org", "extra": f"arXiv:{aid}{ver}"}
-    if tag:
-        item["tags"] = [{"tag": tag}]
-    cache[key] = item
-    save_cache(cache)
-    return item
+    cache_put(cache, key, item)
+    return apply_tag(item, tag)
 
 
-def fetch_doi(doi, cache, tag):
+def fetch_doi(doi, cache, tag, refresh=False):
     key = f"doi:{doi}"
-    if key in cache:
-        return cache[key]
+    cached = cache_get(cache, key, refresh)
+    if cached is not None:
+        return apply_tag(cached, tag)
     msg = json.loads(curl(f"https://api.crossref.org/works/{urllib.parse.quote(doi)}"))["message"]
     names = [f"{a.get('given','')} {a.get('family','')}".strip() for a in msg.get("author", [])]
     dp = (msg.get("published") or msg.get("published-print") or msg.get("published-online") or {})
@@ -96,11 +129,8 @@ def fetch_doi(doi, cache, tag):
             "volume": msg.get("volume", ""), "issue": msg.get("issue", ""), "pages": msg.get("page", ""),
             "date": "-".join(str(p) for p in parts), "DOI": doi, "url": f"https://doi.org/{doi}",
             "libraryCatalog": "CrossRef"}
-    if tag:
-        item["tags"] = [{"tag": tag}]
-    cache[key] = item
-    save_cache(cache)
-    return item
+    cache_put(cache, key, item)
+    return apply_tag(item, tag)
 
 
 def save_to_zotero(item):
@@ -117,15 +147,16 @@ def save_to_zotero(item):
 
 
 def existing_idents():
-    """archiveIDs (arXiv:..) + DOIs already in the library, lowercased, for dedup. Best-effort, paginated.
-    No itemType filter: the API's `-attachment || note` parses as OR and filters nothing, and anyway
-    notes/attachments carry no archiveID/DOI so they contribute nothing here."""
-    seen, start = set(), 0
+    """archiveIDs (arXiv:..) + DOIs already in the library, lowercased, for dedup. Paginated, no itemType
+    filter (notes/attachments carry no archiveID/DOI). Returns (seen, trustworthy): trustworthy is False
+    if the read failed OR the 10k page cap was hit before exhausting the library — i.e. dedup is incomplete."""
+    seen, start, complete = set(), 0, False
     try:
         for _ in range(100):  # hard page cap (~10k items) so a misbehaving API can't loop forever
             url = BASE + f"/api/users/0/items?format=json&limit=100&start={start}"
             batch = json.loads(urllib.request.urlopen(url, timeout=20).read())
             if not batch:
+                complete = True
                 break
             for it in batch:
                 d = it.get("data", {})
@@ -134,20 +165,29 @@ def existing_idents():
                 if d.get("DOI"):
                     seen.add(d["DOI"].lower())
             if len(batch) < 100:
+                complete = True
                 break
             start += 100
+        if not complete:
+            print("  ⚠️  DEDUP INCOMPLETE — hit the 10,000-item scan cap; duplicates beyond that "
+                  "may not be caught.")
+        return seen, complete
     except Exception as e:
-        print(f"(dedup check skipped — could not read library: {e})")
-    return seen
+        print(f"  ⚠️  DEDUP FAILED — could not read the library ({e}); cannot guarantee no duplicates. "
+              f"Check Zotero is running with the local API enabled.")
+        return seen, False
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--arxiv", nargs="*", default=[], help="arXiv IDs (without version)")
+    ap.add_argument("--arxiv", nargs="*", default=[], help="arXiv IDs (version suffix is stripped)")
     ap.add_argument("--doi", nargs="*", default=[], help="DOIs")
-    ap.add_argument("--tag", default=None, help="topic tag attached to every added item")
+    ap.add_argument("--tag", default=None, help="topic tag attached to every added item (needed for stage-3 export)")
     ap.add_argument("--input", default=None, help="JSON file: [{'arxiv':..}|{'doi':..}]")
     ap.add_argument("--dry-run", action="store_true", help="build + print, do not save")
+    ap.add_argument("--refresh", action="store_true", help="ignore the cache; re-fetch latest metadata")
+    ap.add_argument("--force-without-dedup", action="store_true",
+                    help="add even if the library can't be fully read for dedup (risks duplicates)")
     a = ap.parse_args()
 
     arxiv, doi = list(a.arxiv), list(a.doi)
@@ -158,16 +198,19 @@ def main():
             if rec.get("doi"):
                 doi.append(rec["doi"])
 
+    if not a.tag and not a.dry_run:
+        print("(note: no --tag set — stage-3 export won't be able to find this set by tag later)")
+
     cache, built = load_cache(), []
     for aid in arxiv:
         try:
-            built.append(fetch_arxiv(aid, cache, a.tag)); print(f"fetched arxiv {aid}")
+            built.append(fetch_arxiv(aid, cache, a.tag, a.refresh)); print(f"fetched arxiv {aid}")
         except Exception as e:
             print(f"!! arxiv {aid}: {e}")
         time.sleep(3)
     for d in doi:
         try:
-            built.append(fetch_doi(d, cache, a.tag)); print(f"fetched doi {d}")
+            built.append(fetch_doi(d, cache, a.tag, a.refresh)); print(f"fetched doi {d}")
         except Exception as e:
             print(f"!! doi {d}: {e}")
 
@@ -178,7 +221,12 @@ def main():
         print("\n[dry-run] nothing saved. Re-run without --dry-run to write.")
         return
 
-    seen = existing_idents()
+    seen, dedup_ok = existing_idents()
+    if not dedup_ok and not a.force_without_dedup:
+        print("\nAborting before any write: dedup could not be trusted (see warning above). Fix Zotero and "
+              "re-run, or pass --force-without-dedup to add anyway.")
+        return
+
     print()
     ok = skipped = 0
     for it in built:

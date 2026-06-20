@@ -56,7 +56,12 @@ http→https redirect compounds it (read timeouts). Mitigations the scripts use:
 
 - call `https://export.arxiv.org/...` **directly** (no http→https redirect) via **curl** with `--retry`;
 - **space** calls out (~3s) and fetch per-ID rather than hammering;
-- **cache** every fetch to `/tmp/zotero_add_cache.json` so dry-runs and reruns never refetch.
+- **cache** fetches to `/tmp/zotero_add_cache.json` so a dry-run and the real run in the same sitting don't
+  refetch — but bound it: entries carry a timestamp and expire after a TTL (default 6h), and `--refresh`
+  forces a re-fetch. A stale cache must never silently defeat the "latest arXiv version" guarantee, so write
+  runs re-validate anything older than the TTL. Tags are NOT cached (they're run-specific) — the current
+  `--tag` is applied fresh on every return, or a dry-run with `--tag A` then a real run with `--tag B` would
+  save the wrong tag.
 
 Never trust LLM-recalled arXiv IDs/versions — always confirm against the API; the `<id>` field returns the
 current latest `vN`.

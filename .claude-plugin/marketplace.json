@@ -13,7 +13,7 @@
     {
       "name": "zotero-kg",
       "source": "./",
-      "description": "Get research INTO a local Zotero library — no Web API key, connector-write at the latest arXiv version — and onward into a kg knowledge-graph wiki. Bundles the zotero MCP server.",
+      "description": "Get research INTO a local Zotero library — no Web API key, connector-write at the latest arXiv version — and onward into a kg knowledge-graph wiki. Configures and launches an already-installed zotero-mcp server.",
       "version": "0.1.0",
       "author": {
         "name": "gonos2k"
