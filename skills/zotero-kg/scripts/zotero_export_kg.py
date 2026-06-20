@@ -37,6 +37,22 @@ def slug(s):
     return s[:60] or "item"
 
 
+def pick_filename(out, base, key, used, force):
+    """Return (name, '<out>/<name>.md') that is unique within this run (not in `used`) AND — unless
+    `force` — is either nonexistent or a file we wrote (marker). Guarantees we NEVER overwrite a
+    user's own .md: it keeps trying <base>, <base>-<key>, <base>-<key>-2, -3, ... until one is safe.
+    (A single fallback name is not enough — that candidate can itself collide with a user file.)"""
+    n = 1
+    while True:
+        cand = base if n == 1 else (f"{base}-{key}" if n == 2 else f"{base}-{key}-{n - 1}")
+        n += 1
+        if cand in used:
+            continue
+        path = os.path.join(out, f"{cand}.md")
+        if force or not os.path.exists(path) or is_ours(path):
+            return cand, path
+
+
 def fetch_all(path, params, cap):
     """Paginate through all matching items (100/page) up to `cap`. Returns (items, truncated?)."""
     items, start = [], 0
@@ -95,13 +111,7 @@ def main():
         authors = ", ".join(f"{c.get('firstName','')} {c.get('lastName','')}".strip()
                             for c in d.get("creators", []) if c.get("creatorType") == "author")
         base = slug(d.get("title", "item"))
-        name = base if base not in used else f"{base}-{d.get('key', 'x')}"  # disambiguate collisions w/ unique key
-        fn = os.path.join(a.out, f"{name}.md")
-        # Don't clobber a pre-existing file we didn't write (a user's own note with the same slug) unless
-        # --force; fall back to a key-disambiguated name, which is effectively unique.
-        if os.path.exists(fn) and not a.force and not is_ours(fn):
-            name = f"{name}-{d.get('key', 'x')}"
-            fn = os.path.join(a.out, f"{name}.md")
+        name, fn = pick_filename(a.out, base, d.get("key", "x"), used, a.force)
         used.add(name)
         lines = [MARKER, "",
                  f"# {d.get('title','')}", "",

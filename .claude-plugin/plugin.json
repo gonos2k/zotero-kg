@@ -1,7 +1,7 @@
 {
   "name": "zotero-kg",
   "description": "Research a topic, add the papers to a local Zotero library (connector-write, latest arXiv version), and optionally ingest them into a kg knowledge-graph wiki.",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "author": {
     "name": "gonos2k",
     "url": "https://github.com/gonos2k"
