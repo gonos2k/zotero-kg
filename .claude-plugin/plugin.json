@@ -1,0 +1,14 @@
+{
+  "name": "zotero-kg",
+  "description": "Research a topic, add the papers to a local Zotero library (connector-write, latest arXiv version), and optionally ingest them into a kg knowledge-graph wiki.",
+  "version": "0.1.0",
+  "author": {
+    "name": "gonos2k",
+    "url": "https://github.com/gonos2k"
+  },
+  "homepage": "https://github.com/gonos2k/zotero-kg",
+  "repository": "https://github.com/gonos2k/zotero-kg",
+  "license": "MIT",
+  "keywords": ["zotero", "claude-code", "knowledge-graph", "arxiv", "reference-manager", "research"],
+  "skills": ["./skills/zotero-kg"]
+}

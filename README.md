@@ -31,16 +31,20 @@ Three stages — runnable end-to-end or one at a time:
 
 ## Install
 
-Clone into your Claude Code skills directory:
+This is a Claude Code **plugin**. Add the marketplace and install:
 
-```bash
-git clone https://github.com/gonos2k/zotero-kg ~/.claude/skills/zotero-kg
+```text
+/plugin marketplace add gonos2k/zotero-kg
+/plugin install zotero-kg@zotero-kg
 ```
 
-The skill is then available in Claude Code. The bundled scripts can also be run directly:
+The plugin bundles the skill **and** auto-registers the `zotero` MCP server (local mode). You still need the
+`zotero-mcp` binary on PATH (see Prerequisites) and Zotero running with the local API enabled.
+
+The bundled scripts can also be run directly from the installed plugin, e.g.:
 
 ```bash
-python ~/.claude/skills/zotero-kg/scripts/zotero_add.py --arxiv 2505.22954 --tag my-topic --dry-run
+python <plugin-dir>/skills/zotero-kg/scripts/zotero_add.py --arxiv 2505.22954 --tag my-topic --dry-run
 ```
 
 ## Usage
