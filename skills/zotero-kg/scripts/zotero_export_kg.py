@@ -18,6 +18,19 @@ import argparse, glob, json, os, re, urllib.request, urllib.parse
 
 BASE = "http://localhost:23119/api/users/0"
 
+# First line stamped into every file we write. Clearing only ever deletes files carrying this exact
+# marker, so a user's own .md in the --out dir is never touched even if --out names a staging dir.
+MARKER = "<!-- zotero-kg-export: generated file, safe to overwrite/delete -->"
+
+
+def is_ours(path):
+    """True only if `path` is a markdown file this tool wrote (first line == MARKER)."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            return f.readline().rstrip("\n") == MARKER
+    except OSError:
+        return False
+
 
 def slug(s):
     s = re.sub(r"[^a-zA-Z0-9가-힣]+", "-", (s or "").strip().lower()).strip("-")
@@ -44,6 +57,9 @@ def main():
     ap.add_argument("--collection", default=None, help="export items in this collection key")
     ap.add_argument("--out", default="/tmp/zotero-kg-staging", help="staging dir for /kg-ingest")
     ap.add_argument("--limit", type=int, default=500, help="safety cap on items exported")
+    ap.add_argument("--force", action="store_true",
+                    help="overwrite an existing same-named .md even if this tool didn't create it "
+                         "(default: keep the user's file and write under a key-disambiguated name)")
     a = ap.parse_args()
 
     if not a.tag and not a.collection:
@@ -62,17 +78,15 @@ def main():
 
     os.makedirs(a.out, exist_ok=True)
     stale = glob.glob(os.path.join(a.out, "*.md"))   # prior exports would otherwise be ingested with THIS run
-    if stale:
-        # Only auto-delete inside our own staging tree — NEVER nuke .md from a dir the user pointed elsewhere.
-        # Exact path-component match: clears /tmp/zotero-kg-staging AND .../zotero-kg-staging/run1, but NOT a
-        # user dir like /data/zotero-kg-staging-archive (whose component is a different string).
-        if "zotero-kg-staging" in os.path.normpath(a.out).split(os.sep):
-            for s in stale:
-                os.remove(s)
-            print(f"(cleared {len(stale)} stale .md file(s) from {a.out})")
-        else:
-            print(f"WARNING: {a.out} already contains {len(stale)} .md file(s); NOT deleting them (this is not a "
-                  f"default staging dir). /kg-ingest would ingest them too — use a fresh --out or clear it yourself.")
+    ours = [s for s in stale if is_ours(s)]
+    others = [s for s in stale if s not in ours]
+    for s in ours:                                    # only ever delete files THIS tool wrote (marker line)
+        os.remove(s)
+    if ours:
+        print(f"(cleared {len(ours)} stale zotero-kg export file(s) from {a.out})")
+    if others:
+        print(f"WARNING: {a.out} also holds {len(others)} non-export .md file(s) — leaving them untouched. "
+              f"/kg-ingest would ingest them too; use a fresh --out or move them aside.")
     written, used = [], set()
     for it in data:
         d = it["data"]
@@ -82,9 +96,15 @@ def main():
                             for c in d.get("creators", []) if c.get("creatorType") == "author")
         base = slug(d.get("title", "item"))
         name = base if base not in used else f"{base}-{d.get('key', 'x')}"  # disambiguate collisions w/ unique key
-        used.add(name)
         fn = os.path.join(a.out, f"{name}.md")
-        lines = [f"# {d.get('title','')}", "",
+        # Don't clobber a pre-existing file we didn't write (a user's own note with the same slug) unless
+        # --force; fall back to a key-disambiguated name, which is effectively unique.
+        if os.path.exists(fn) and not a.force and not is_ours(fn):
+            name = f"{name}-{d.get('key', 'x')}"
+            fn = os.path.join(a.out, f"{name}.md")
+        used.add(name)
+        lines = [MARKER, "",
+                 f"# {d.get('title','')}", "",
                  f"- Authors: {authors}",
                  f"- Date: {d.get('date','')}",
                  f"- Type: {d.get('itemType','')}"]

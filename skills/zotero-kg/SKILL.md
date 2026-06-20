@@ -92,8 +92,10 @@ python scripts/zotero_add.py --arxiv ... --doi ... --tag <topic-tag>   # then sa
   the latest version's date, `archiveID=arXiv:<id>`. That satisfies "최신 버전으로 교체" for *new* adds.
 - **Refreshing an item that already exists** (true in-place "교체") is NOT possible via the connector —
   it only adds. Two honest options, surface both:
-  - *No API key*: add the latest version as a new item, then the user merges the old/new pair in Zotero's
-    **Duplicate Items** view (keep the latest as master). The script's add is all you can automate.
+  - *No API key*: add the latest version as a new item with `--allow-duplicate` (every arXiv version shares
+    `archiveID=arXiv:<id>`, so without that flag dedup skips it as a dup and nothing is added), then the user
+    merges the old/new pair in Zotero's **Duplicate Items** view (keep the latest as master). A real write
+    already re-fetches the latest version, so `--allow-duplicate` alone is enough. The add is all you can automate.
   - *With a Zotero Web API key (hybrid mode)*: real in-place PATCH becomes possible and the Zotero MCP
     write tools start working too. Offer this if the user wants edits/deletes automated going forward.
 
@@ -153,8 +155,8 @@ item, closing the loop between reference manager and knowledge graph.
 
 | Script | Purpose |
 |---|---|
-| `scripts/zotero_add.py` | Fetch latest-version metadata (arXiv/DOI) → add to Zotero via connector API. `--dry-run`, `--tag`, `--input papers.json`. Caches arXiv fetches. |
-| `scripts/zotero_export_kg.py` | Export Zotero items (by `--tag` / `--collection`, `--limit` default 500) to staging markdown for `/kg-ingest`. Warns if run with no selector (would export the whole library). |
+| `scripts/zotero_add.py` | Fetch latest-version metadata (arXiv/DOI) → add to Zotero via connector API. `--dry-run`, `--tag`, `--input papers.json`, `--allow-duplicate` (update→merge), `--force-without-dedup`. Caches dry-run fetches; real writes re-fetch the latest version. |
+| `scripts/zotero_export_kg.py` | Export Zotero items (by `--tag` / `--collection`, `--limit` default 500) to staging markdown for `/kg-ingest`. Only ever deletes/overwrites its own marker-stamped files; `--force` to overwrite others. Warns if run with no selector (would export the whole library). |
 
 Both default to `http://localhost:23119` and userID `0`. They're plain stdlib + curl — no pip installs.
 
@@ -170,8 +172,10 @@ separate manual index.
   key. If placement matters, have the user select the destination collection in Zotero first (or use a Web
   API key for precise filing). `--collection` on the *export* side reads a collection but the *add* side can't.
 - `zotero_add.py` dedup is best-effort: it reads the library and skips items whose `arXiv:<id>` or DOI already
-  exist (covers both connector- and Zotero-translator-added items). If Zotero is unreachable it warns and
-  proceeds without dedup rather than crashing.
+  exist (covers both connector- and Zotero-translator-added items). If the library can't be fully read it
+  **aborts before any write** (so it never adds blind duplicates); pass `--force-without-dedup` to add anyway.
+  To intentionally add a newer arXiv version of an item that already exists (the update→merge workflow), pass
+  `--allow-duplicate`.
 - Invalid arXiv IDs are rejected (arXiv answers with an entry titled "Error"); the script detects that and
   skips, so a bad ID never becomes a junk library item.
 

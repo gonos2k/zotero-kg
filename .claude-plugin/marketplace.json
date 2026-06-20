@@ -7,14 +7,14 @@
   },
   "metadata": {
     "description": "Research → local Zotero (connector-write at latest arXiv version) → optional kg wiki ingest.",
-    "version": "0.1.0"
+    "version": "0.1.1"
   },
   "plugins": [
     {
       "name": "zotero-kg",
       "source": "./",
       "description": "Get research INTO a local Zotero library — no Web API key, connector-write at the latest arXiv version — and onward into a kg knowledge-graph wiki. Configures and launches an already-installed zotero-mcp server.",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "author": {
         "name": "gonos2k"
       },

@@ -7,16 +7,18 @@ The connector endpoint that the browser "Save to Zotero" button uses IS read-wri
 the running Zotero. Caveat: it can only ADD items, never edit/delete existing ones.
 
 arXiv metadata comes from export.arxiv.org over HTTPS via curl (slow, ~12s/call, and it rate-limits
-on rapid repeats). Results are cached to /tmp/zotero_add_cache.json with a short TTL so a dry-run and
-the real run in the same sitting don't refetch — but a stale cache never silently defeats the
-"latest version" guarantee: entries older than CACHE_TTL are re-fetched, and `--refresh` forces it.
-Tags are NOT cached; the current --tag is applied fresh on every return.
+on rapid repeats). Results are cached to /tmp/zotero_add_cache.json with a short TTL (CACHE_TTL) so
+repeated --dry-run previews don't refetch. To keep the "latest arXiv version" promise honest, a real
+(non-dry-run) write ALWAYS re-fetches (it ignores the cache) — so a version published since an earlier
+dry-run is still picked up at save time; `--refresh` forces a re-fetch on dry-runs too. Tags are NOT
+cached; the current --tag is applied fresh on every return.
 
 Usage:
   python zotero_add.py --arxiv 2505.22954 2509.19349 [--doi 10.1038/...] [--tag code-evolution] [--dry-run]
   python zotero_add.py --input papers.json            # [{"arxiv":"..."}|{"doi":"..."}]
   python zotero_add.py --arxiv 2505.22954 --tag t --refresh             # ignore cache, re-fetch latest
   python zotero_add.py --arxiv 2505.22954 --tag t --force-without-dedup # add even if dedup read fails
+  python zotero_add.py --arxiv 2505.22954 --tag t --allow-duplicate     # add a newer version (then merge)
 """
 import argparse, json, os, re, html, subprocess, time
 import urllib.request, urllib.error, urllib.parse
@@ -25,7 +27,7 @@ import xml.etree.ElementTree as ET  # input is the trusted arXiv/CrossRef API; s
 BASE = "http://localhost:23119"
 NS = {"a": "http://www.w3.org/2005/Atom"}
 CACHE = "/tmp/zotero_add_cache.json"
-CACHE_TTL = 6 * 3600  # seconds; beyond this we re-fetch so "latest arXiv version" stays accurate
+CACHE_TTL = 10 * 60   # seconds; dry-run preview cache only — real writes always re-fetch (see main())
 
 
 def curl(url):
@@ -188,6 +190,10 @@ def main():
     ap.add_argument("--refresh", action="store_true", help="ignore the cache; re-fetch latest metadata")
     ap.add_argument("--force-without-dedup", action="store_true",
                     help="add even if the library can't be fully read for dedup (risks duplicates)")
+    ap.add_argument("--allow-duplicate", action="store_true",
+                    help="add even if an item with the same arXiv id / DOI already exists — needed for the "
+                         "UPDATE workflow (every arXiv version shares archiveID=arXiv:<id>, so without this "
+                         "a newer version is skipped as a dup; add it, then merge the pair in Zotero)")
     a = ap.parse_args()
 
     arxiv, doi = list(a.arxiv), list(a.doi)
@@ -201,16 +207,20 @@ def main():
     if not a.tag and not a.dry_run:
         print("(note: no --tag set — stage-3 export won't be able to find this set by tag later)")
 
+    # A real (non-dry-run) write always re-fetches so the saved item is genuinely the latest version;
+    # the short-TTL cache only spares repeated --dry-run previews. --refresh forces a re-fetch either way.
+    eff_refresh = a.refresh or not a.dry_run
+
     cache, built = load_cache(), []
     for aid in arxiv:
         try:
-            built.append(fetch_arxiv(aid, cache, a.tag, a.refresh)); print(f"fetched arxiv {aid}")
+            built.append(fetch_arxiv(aid, cache, a.tag, eff_refresh)); print(f"fetched arxiv {aid}")
         except Exception as e:
             print(f"!! arxiv {aid}: {e}")
         time.sleep(3)
     for d in doi:
         try:
-            built.append(fetch_doi(d, cache, a.tag, a.refresh)); print(f"fetched doi {d}")
+            built.append(fetch_doi(d, cache, a.tag, eff_refresh)); print(f"fetched doi {d}")
         except Exception as e:
             print(f"!! doi {d}: {e}")
 
@@ -233,10 +243,13 @@ def main():
         # an arXiv item carries BOTH archiveID and DOI; check either against the library so a
         # translator-added item that only has one of them still dedups (rerun-safe).
         idents = [v.lower() for v in (it.get("archiveID", ""), it.get("DOI", "")) if v]
-        if idents and any(i in seen for i in idents):
+        is_dup = bool(idents) and any(i in seen for i in idents)
+        if is_dup and not a.allow_duplicate:
             print(f"  [SKIP dup ] {it['title'][:58]}")
             skipped += 1
             continue
+        if is_dup:
+            print(f"  [dup→add ] {it['title'][:58]}  (--allow-duplicate; merge the pair in Zotero after)")
         code, err = save_to_zotero(it)
         good = 200 <= code < 300                           # connector returns 201 (Zotero 9); accept any 2xx
         print(f"  [{('OK ' + str(code)) if good else ('ERR ' + str(code))}] {it['title'][:58]} {err}")
