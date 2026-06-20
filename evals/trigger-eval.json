@@ -1,0 +1,22 @@
+[
+  {"query": "diffusion language model 쪽 요즘 나오는 프레임워크들 좀 찾아서 내 zotero에 넣고 위키에도 정리해줘", "should_trigger": true},
+  {"query": "이 arxiv 논문들 2511.08522, 2509.19349, 2506.13131 내 zotero 라이브러리에 최신버전으로 추가해줘", "should_trigger": true},
+  {"query": "RAG 관련 서베이 논문들 좀 조사해서 레퍼런스 매니저에 정리좀 해줘. 나 zotero 써", "should_trigger": true},
+  {"query": "내 zotero에 있는 arxiv 프리프린트들 다 최신 버전으로 교체하고 싶은데", "should_trigger": true},
+  {"query": "code-evolution 태그 달린 zotero 논문들 내 지식그래프 위키에 ingest해줘", "should_trigger": true},
+  {"query": "방금 읽은 mamba 논문이랑 관련된 거 몇 개 내 레퍼런스에 모으고 지식베이스에도 반영해줘", "should_trigger": true},
+  {"query": "research the main LLM agent long-term memory papers, add them to my Zotero, then ingest into my kg wiki", "should_trigger": true},
+  {"query": "zotero mcp로 논문 넣으려는데 local 모드라 add가 안 먹네. 이거 어떻게 zotero에 반영함?", "should_trigger": true},
+  {"query": "world model 관련 최신 논문 한 5~6개 찾아서 내 논문 라이브러리에 모아줘", "should_trigger": true},
+  {"query": "이 네이처 논문 DOI 10.1038/s41586-024-08328-6 내 zotero에 넣어줘", "should_trigger": true},
+  {"query": "내 zotero 라이브러리에서 transformer attention 관련 논문 검색해서 목록 보여줘", "should_trigger": false},
+  {"query": "zotero에 있는 AlphaEvolve 논문 초록이랑 저자 좀 보여줘", "should_trigger": false},
+  {"query": "내 위키에서 code-evolution 개념이 어떤 페이지들이랑 연결돼 있는지 그래프로 보여줘", "should_trigger": false},
+  {"query": "이 논문 5개 BibTeX citation으로 만들어줘, 참고문헌 목록에 붙이게", "should_trigger": false},
+  {"query": "arxiv 2505.22954 이 논문 내용 요약해서 핵심만 알려줘", "should_trigger": false},
+  {"query": "이 논문 읽고 정리한 내용을 옵시디언 데일리 노트에 적어줘", "should_trigger": false},
+  {"query": "Mendeley에 PDF 끌어다 넣으면 메타데이터 자동으로 채워지나? 방법 알려줘", "should_trigger": false},
+  {"query": "transformer 아키텍처 발전사 좀 조사해서 정리해서 설명해줘", "should_trigger": false},
+  {"query": "zotero-mcp 시맨틱 검색 db 다시 인덱싱하는 명령어 뭐였지?", "should_trigger": false},
+  {"query": "이 README.md 파일 내용 내 위키에 ingest해줘", "should_trigger": false}
+]

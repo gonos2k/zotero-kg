@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+.DS_Store
+/tmp/
+zotero_add_cache.json
+zotero-kg-staging/
