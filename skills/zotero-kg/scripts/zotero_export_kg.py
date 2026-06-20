@@ -61,11 +61,18 @@ def main():
         print(f"WARNING: hit --limit {a.limit}; more items may exist — raise --limit to export all.")
 
     os.makedirs(a.out, exist_ok=True)
-    stale = glob.glob(os.path.join(a.out, "*.md"))   # clear prior exports so /kg-ingest only sees THIS run
-    for s in stale:
-        os.remove(s)
+    stale = glob.glob(os.path.join(a.out, "*.md"))   # prior exports would otherwise be ingested with THIS run
     if stale:
-        print(f"(cleared {len(stale)} stale .md file(s) from {a.out})")
+        # Only auto-delete inside our own staging tree — NEVER nuke .md from a dir the user pointed elsewhere.
+        # Exact path-component match: clears /tmp/zotero-kg-staging AND .../zotero-kg-staging/run1, but NOT a
+        # user dir like /data/zotero-kg-staging-archive (whose component is a different string).
+        if "zotero-kg-staging" in os.path.normpath(a.out).split(os.sep):
+            for s in stale:
+                os.remove(s)
+            print(f"(cleared {len(stale)} stale .md file(s) from {a.out})")
+        else:
+            print(f"WARNING: {a.out} already contains {len(stale)} .md file(s); NOT deleting them (this is not a "
+                  f"default staging dir). /kg-ingest would ingest them too — use a fresh --out or clear it yourself.")
     written, used = [], set()
     for it in data:
         d = it["data"]
